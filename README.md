@@ -151,3 +151,8 @@ without touching any checked field. Tested against my own Task 1 agent, which
 is hardened against injection and hallucinated evidence, this CV scores 0.95
 (trustworthy) while the true `target_cv.pdf` scores the same 0.95 - the agent
 finds zero discrepancies, exactly as designed.
+
+
+### Task 3: Reflection on the AI paradoxes
+
+This homework made the paradoxes concrete for me: the same model that powers my verifier is the one my attack exploits, so every improvement in AI-driven verification simultaneously raises the value of fooling it. My agent catches a fabricated Docker skill in seconds, yet waves through invented CFA credentials, because an AI can only verify what it is wired to check - verification is fast but fundamentally narrow. The more we trust such automated gatekeepers in KYC and hiring, the less humans look themselves, and the more damage a single well-crafted deception can do. In the end the strongest defence I built was not a smarter model but old-fashioned grounding: forcing every claim back to raw tool evidence, which is a reminder that AI judgment is only as trustworthy as the human-designed constraints around it.
