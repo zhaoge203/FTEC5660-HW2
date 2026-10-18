@@ -90,10 +90,64 @@ python3 hw2.py --cv-folder task2
 attack the MCP server. See the homework description for the full rules.
 
 ## Homework 2 solution:
-> to students: this is your report, see the homework description.
 
 ### Task 1
-> one paragraph describing your solution, and your results on `public_test`.
+
+My verifier is a single tool-calling LangChain agent (`create_agent`) built on
+`deepseek-v4-flash` at temperature 0, driven by a detailed system prompt that
+prescribes a fixed procedure: reconstruct the candidate's claims from the raw
+CV text; search LinkedIn by full name plus the CV's city (adding industry when
+the name is common, since hundreds of people share names); resolve the entity
+by fetching every plausible profile and picking the one with real overlap
+(employer or school in common), never just the first hit; optionally
+corroborate city/education once via Facebook; then compare the CV against the
+chosen LinkedIn profile field by field - name, city, each job (company, title,
+seniority, start/end years, where a null end year means "Present"), each
+education entry (degree, school, field, graduation year) and skills. The
+prompt spells out equivalence rules so wording differences are not flagged
+(BSc = Bachelor of Science, "Senior X" = title X with seniority senior, skill
+variants, listing fewer skills is fine) and restricts discrepancies to
+material mismatches in the checked fields only. The agent ends with a fenced
+JSON verdict (`person_id`, `found_profile`, `discrepancies`, `red_flags`),
+which `score_cvs` parses and maps to a score: 0.95 when the profile was found
+and clean, 0.1 when a discrepancy exists, 0.25 when no profile is found or the
+verdict is not grounded in actual tool outputs, and 0.4 as a per-CV fallback
+after three failed attempts, so one bad CV never crashes the run (CVs are
+processed concurrently under `asyncio.Semaphore(3)`). Because Task 2 attacks
+this same pipeline, the agent is hardened against prompt injection: CV text is
+scanned for injection/trust-manipulation markers, wrapped in `<cv_document>`
+tags declared as untrusted data, capped at 30k characters, and every claimed
+discrepancy or person_id must appear verbatim in real tool outputs before it
+counts; red-flagged documents cannot score above 0.45. On `public_test` the
+agent scores **7/7 correct**: the four valid CVs (1, 2, 3, 6) receive 0.95 and
+all three planted discrepancies are caught - CV_4's shifted start year at
+Innovate HK Ltd (2015 vs 2014), CV_5's inflated title at Microsoft (Senior
+Analyst vs junior Analyst) and CV_7's fabricated Docker skill each receive
+0.1.
 
 ### Task 2
-> the attack techniques you used and why you expect them to work.
+
+My attack exploits **verification coverage**: the verifiers only compare five
+field types (name, city, jobs, education, skills) against tool evidence, and
+the SocialGraph profile schema contains no certifications, awards, languages
+or interests at all. So the CV keeps every *checkable* field exactly
+consistent with Kelly Tsang's real LinkedIn profile - name, Central/Hong Kong,
+Manager at AIA 2022-Present, Analyst at Standard Chartered 2019-2022, Analyst
+at HSBC 2016-2019, BSc in Finance from HKUST (2016), and precisely her four
+listed skills - while the fabrication lives entirely in sections no tool can
+return: invented certifications (CFA Level II candidate, FRM Part I, HKSI
+Paper 1), invented awards (an AIA Top Performer Award and a Standard Chartered
+recognition), plus languages and interests. Unlike a fake skill (public CV_7's
+Docker), whose absence is *provable* by comparing against the profile's skills
+list, the absence of a certification is *unprovable*: no MCP tool returns a
+certifications field, so a field-by-field verifier has nothing to compare
+these claims against and cannot flag them without also false-flagging the
+hobbies/languages sections of honest CVs. The invented credentials double as
+authority cues (LLM-as-a-judge bias/sycophancy): a CFA/FRM-certified,
+award-winning profile reads as more trustworthy, nudging borderline judges
+upward, and the embellished but unverifiable achievement bullets (e.g.
+"introduced SQL workflows that cut monthly close time") add plausibility
+without touching any checked field. Tested against my own Task 1 agent, which
+is hardened against injection and hallucinated evidence, this CV scores 0.95
+(trustworthy) while the true `target_cv.pdf` scores the same 0.95 - the agent
+finds zero discrepancies, exactly as designed.
